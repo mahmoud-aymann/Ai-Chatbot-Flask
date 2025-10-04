@@ -1,15 +1,8 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "deploy_model.py",
-      "use": "@vercel/python"
+  "functions": {
+    "deploy_model.py": {
+      "runtime": "python3.11"
     }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "deploy_model.py"
-    }
-  ]
+  }
 }
