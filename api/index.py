@@ -32,26 +32,86 @@ data = None
 def load_model():
     global vectorizer, le, model, data
     try:
-        print("Loading vectorizer...")
-        vectorizer = pickle.load(open('vectorizer.pkl', 'rb'))
+        # Try to load files from different possible locations
+        base_paths = ['.', '/var/task', '/tmp']
+        
+        for base_path in base_paths:
+            try:
+                print(f"Trying to load from {base_path}...")
+                
+                # Load vectorizer
+                vectorizer_path = os.path.join(base_path, 'vectorizer.pkl')
+                if os.path.exists(vectorizer_path):
+                    vectorizer = pickle.load(open(vectorizer_path, 'rb'))
+                    print(f"Vectorizer loaded from {vectorizer_path}")
+                    break
+            except Exception as e:
+                print(f"Failed to load from {base_path}: {e}")
+                continue
+        
+        if vectorizer is None:
+            print("Could not load vectorizer from any path")
+            return False
+            
         print(f"Vectorizer loaded. Vocabulary size: {len(vectorizer.vocabulary_)}")
         
-        print("Loading label encoder...")
-        le = pickle.load(open('label_encoder.pkl', 'rb'))
+        # Load label encoder
+        for base_path in base_paths:
+            try:
+                le_path = os.path.join(base_path, 'label_encoder.pkl')
+                if os.path.exists(le_path):
+                    le = pickle.load(open(le_path, 'rb'))
+                    print(f"Label encoder loaded from {le_path}")
+                    break
+            except Exception as e:
+                print(f"Failed to load label encoder from {base_path}: {e}")
+                continue
+        
+        if le is None:
+            print("Could not load label encoder from any path")
+            return False
+            
         print(f"Label encoder loaded. Classes: {len(le.classes_)}")
         
+        # Create model
         print("Creating model...")
         model = ChatbotModel(input_dim=len(vectorizer.vocabulary_), hidden_dim=128, output_dim=len(le.classes_))
         
-        print("Loading model weights...")
-        model.load_state_dict(torch.load('model.pth', map_location='cpu'))
-        model.eval()
+        # Load model weights
+        for base_path in base_paths:
+            try:
+                model_path = os.path.join(base_path, 'model.pth')
+                if os.path.exists(model_path):
+                    model.load_state_dict(torch.load(model_path, map_location='cpu'))
+                    model.eval()
+                    print(f"Model weights loaded from {model_path}")
+                    break
+            except Exception as e:
+                print(f"Failed to load model from {base_path}: {e}")
+                continue
         
-        print("Loading data...")
-        with open("data.json", encoding='utf-8') as f:
-            data = json.load(f)
+        if model is None:
+            print("Could not load model from any path")
+            return False
+        
+        # Load data
+        for base_path in base_paths:
+            try:
+                data_path = os.path.join(base_path, 'data.json')
+                if os.path.exists(data_path):
+                    with open(data_path, encoding='utf-8') as f:
+                        data = json.load(f)
+                    print(f"Data loaded from {data_path}")
+                    break
+            except Exception as e:
+                print(f"Failed to load data from {base_path}: {e}")
+                continue
+        
+        if data is None:
+            print("Could not load data from any path")
+            return False
+            
         print(f"Data loaded. Number of intents: {len(data)}")
-        
         print("Model and data loaded successfully!")
         return True
         
@@ -85,7 +145,95 @@ def get_fallback_response(user_input):
 
 @app.route('/')
 def home():
-    return render_template('home.html')
+    try:
+        return render_template('home.html')
+    except Exception as e:
+        print(f"Error loading template: {e}")
+        # Fallback HTML if template fails
+        return '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>AI Chatbot - Mahmoud Ayman</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+                .header { text-align: center; margin-bottom: 30px; }
+                .profile-img { width: 120px; height: 120px; border-radius: 50%; margin-bottom: 20px; }
+                h1 { color: #333; margin-bottom: 10px; }
+                .subtitle { color: #666; margin-bottom: 30px; }
+                .chat-container { border: 1px solid #ddd; border-radius: 10px; height: 400px; overflow-y: auto; padding: 20px; margin-bottom: 20px; background: #fafafa; }
+                .input-container { display: flex; gap: 10px; }
+                input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px; }
+                button { padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; }
+                button:hover { background: #0056b3; }
+                .message { margin-bottom: 15px; padding: 10px; border-radius: 5px; }
+                .user-message { background: #007bff; color: white; margin-left: 20%; }
+                .bot-message { background: #e9ecef; color: #333; margin-right: 20%; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🤖 AI Chatbot</h1>
+                    <p class="subtitle">Meet Mahmoud Ayman - AI & Engineering Student</p>
+                </div>
+                <div class="chat-container" id="chatContainer">
+                    <div class="message bot-message">
+                        Hello! I'm Mahmoud Ayman's AI assistant. Ask me about my studies, experience, or projects!
+                    </div>
+                </div>
+                <div class="input-container">
+                    <input type="text" id="messageInput" placeholder="Type your message here..." onkeypress="handleKeyPress(event)">
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+            <script>
+                function sendMessage() {
+                    const input = document.getElementById('messageInput');
+                    const message = input.value.trim();
+                    if (message) {
+                        addMessage(message, true);
+                        input.value = '';
+                        
+                        // Send to backend
+                        fetch('/predict', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'message=' + encodeURIComponent(message)
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.error) {
+                                addMessage('Error: ' + data.error, false);
+                            } else {
+                                addMessage(data.response, false);
+                            }
+                        })
+                        .catch(error => {
+                            addMessage('Sorry, I encountered an error. Please try again.', false);
+                        });
+                    }
+                }
+                
+                function addMessage(message, isUser = false) {
+                    const chatContainer = document.getElementById('chatContainer');
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = 'message ' + (isUser ? 'user-message' : 'bot-message');
+                    messageDiv.textContent = message;
+                    chatContainer.appendChild(messageDiv);
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+                
+                function handleKeyPress(event) {
+                    if (event.key === 'Enter') {
+                        sendMessage();
+                    }
+                }
+            </script>
+        </body>
+        </html>
+        '''
 
 @app.route('/predict', methods=['POST'])
 def predict():
