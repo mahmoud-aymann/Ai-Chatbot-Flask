@@ -1,1 +1,1 @@
-web: python deploy_model.py
+web: python api/index.py
